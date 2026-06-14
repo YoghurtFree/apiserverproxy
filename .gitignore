@@ -1,0 +1,19 @@
+# Binaries
+bin/
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+.$architecture.drawio.dtmp
+
+# Config with secrets
+# config.json  # uncomment if config contains real tokens
