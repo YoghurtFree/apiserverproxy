@@ -15,5 +15,8 @@ Thumbs.db
 # Temp files
 .$architecture.drawio.dtmp
 
+# Logs
+logs/
+
 # Config with secrets
 # config.json  # uncomment if config contains real tokens

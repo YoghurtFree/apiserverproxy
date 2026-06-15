@@ -13,9 +13,19 @@ type ClusterConfig struct {
 	Token  string `json:"token"`
 }
 
+// LogConfig holds logging configuration.
+type LogConfig struct {
+	Level      string `json:"level"`       // debug, info, warn, error
+	FilePath   string `json:"filePath"`    // log file path, empty = stdout only
+	MaxSize    int    `json:"maxSizeMB"`   // max size in MB before rotation
+	MaxBackups int    `json:"maxBackups"`  // max number of old log files
+	MaxAge     int    `json:"maxAgeDays"`  // max days to retain old log files
+}
+
 // ClustersConfig holds the configuration for multiple clusters.
 type ClustersConfig struct {
 	Clusters []ClusterConfig `json:"clusters"`
+	Log      LogConfig       `json:"log"`
 }
 
 // LoadClustersConfig loads cluster configurations from a JSON file.

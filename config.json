@@ -1,4 +1,11 @@
 {
+  "log": {
+    "level": "info",
+    "filePath": "logs/apiserverproxy.log",
+    "maxSizeMB": 100,
+    "maxBackups": 5,
+    "maxAgeDays": 30
+  },
   "clusters": [
     {
       "name": "minikube",
