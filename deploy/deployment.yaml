@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apiserverproxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apiserverproxy
+  template:
+    metadata:
+      labels:
+        app: apiserverproxy
+    spec:
+      containers:
+        - name: apiserverproxy
+          image: apiserverproxy:latest
+          ports:
+            - containerPort: 8080
+          args:
+            - --config-file=/etc/apiserverproxy/config.json
+            - --listen=:8080
+          volumeMounts:
+            - name: config
+              mountPath: /etc/apiserverproxy
+              readOnly: true
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: apiserverproxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apiserverproxy
+  namespace: default
+spec:
+  selector:
+    app: apiserverproxy
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

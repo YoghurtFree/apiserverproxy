@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apiserverproxy-config
+  namespace: default
+data:
+  config.json: |
+    {
+      "log": {
+        "level": "info",
+        "filePath": "",
+        "maxSizeMB": 100,
+        "maxBackups": 5,
+        "maxAgeDays": 30
+      },
+      "clusters": []
+    }
