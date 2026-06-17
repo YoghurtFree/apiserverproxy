@@ -8,12 +8,17 @@ bin/
 *.swp
 *.swo
 
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Architecture diagrams
+architecture.drawio
+.$architecture.drawio.dtmp
+
 # OS
 .DS_Store
 Thumbs.db
-
-# Temp files
-.$architecture.drawio.dtmp
 
 # Logs
 logs/
