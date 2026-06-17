@@ -5,6 +5,7 @@ import (
 
 	"apiserverproxy/internal/cache"
 	"apiserverproxy/internal/config"
+	"apiserverproxy/internal/middleware"
 	"apiserverproxy/internal/proxy"
 )
 
@@ -13,6 +14,8 @@ func New(clusters *config.ClustersConfig, cacheManager *cache.Manager) (*gin.Eng
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.TraceID())
+	router.Use(middleware.AccessLog())
 
 	handler := proxy.NewMultiClusterHandler(clusters, cacheManager)
 

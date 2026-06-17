@@ -128,6 +128,11 @@ func (h *MultiClusterHandler) Handle(c *gin.Context) {
 	copyHeaders(proxyReq.Header, c.Request.Header)
 	removeHopByHopHeaders(proxyReq.Header)
 
+	// Set trace-id
+	if traceID, exists := c.Get("trace_id"); exists {
+		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
+	}
+
 	// Set bearer token
 	if cluster.Token != "" {
 		proxyReq.Header.Set("Authorization", "Bearer "+cluster.Token)
@@ -331,6 +336,11 @@ func (h *MultiClusterHandler) proxyRequest(c *gin.Context, clusterName, apiPath 
 	// Copy headers
 	copyHeaders(proxyReq.Header, c.Request.Header)
 	removeHopByHopHeaders(proxyReq.Header)
+
+	// Set trace-id
+	if traceID, exists := c.Get("trace_id"); exists {
+		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
+	}
 
 	// Set bearer token
 	if cluster.Token != "" {
