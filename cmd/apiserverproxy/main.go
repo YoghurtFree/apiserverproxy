@@ -10,10 +10,12 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"k8s.io/client-go/rest"
 
 	"apiserverproxy/internal/cache"
 	"apiserverproxy/internal/config"
 	ilog "apiserverproxy/internal/log"
+	"apiserverproxy/internal/proxy"
 	"apiserverproxy/internal/router"
 )
 
@@ -38,8 +40,22 @@ func main() {
 		log.Infof("  - %s: %s", c.Name, c.Server)
 	}
 
-	cacheManager := cache.InitFromConfig(context.Background(), clusters.Clusters)
-	engine := router.New(clusters, cacheManager)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cacheManager := cache.InitFromConfig(ctx, clusters.Clusters)
+	engine, handler := router.New(clusters, cacheManager)
+
+	// Start config watcher for hot-reload
+	watcher := config.NewWatcher(*configFile, func(newCfg *config.ClustersConfig) {
+		reloadClusters(ctx, cacheManager, handler, clusters, newCfg)
+		clusters = newCfg
+	})
+	go func() {
+		if err := watcher.Start(ctx); err != nil {
+			log.Errorf("config watcher stopped: %v", err)
+		}
+	}()
 
 	server := &http.Server{
 		Addr:         *listenAddr,
@@ -60,13 +76,65 @@ func main() {
 	<-quit
 
 	log.Info("Shutting down proxy...")
+	cancel() // stop config watcher
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Errorf("Server shutdown error: %v", err)
 	}
 
+	cacheManager.StopAll()
 	log.Info("Proxy stopped")
+}
+
+// reloadClusters diffs old and new config, then starts/stops caches accordingly.
+func reloadClusters(ctx context.Context, mgr *cache.Manager, handler *proxy.MultiClusterHandler, oldCfg, newCfg *config.ClustersConfig) {
+	oldSet := make(map[string]config.ClusterConfig)
+	for _, c := range oldCfg.Clusters {
+		oldSet[c.Name] = c
+	}
+	newSet := make(map[string]config.ClusterConfig)
+	for _, c := range newCfg.Clusters {
+		newSet[c.Name] = c
+	}
+
+	// Stop removed clusters
+	for name := range oldSet {
+		if _, exists := newSet[name]; !exists {
+			log.Infof("stopping cache for removed cluster: %s", name)
+			mgr.Stop(name)
+		}
+	}
+
+	// Start or restart changed/added clusters
+	for name, newCluster := range newSet {
+		old, exists := oldSet[name]
+		changed := !exists || old.Server != newCluster.Server || old.Token != newCluster.Token
+
+		if !changed {
+			continue
+		}
+
+		if exists {
+			log.Infof("restarting cache for changed cluster: %s", name)
+			mgr.Stop(name)
+		} else {
+			log.Infof("starting cache for new cluster: %s", name)
+		}
+
+		cfg := &rest.Config{
+			Host:        newCluster.Server,
+			BearerToken: newCluster.Token,
+			TLSClientConfig: rest.TLSClientConfig{
+				Insecure: true,
+			},
+		}
+		if err := mgr.Start(ctx, name, cfg); err != nil {
+			log.Errorf("start cache for %s: %v", name, err)
+		}
+	}
+
+	handler.Reload(newCfg)
 }

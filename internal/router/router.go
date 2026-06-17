@@ -8,8 +8,8 @@ import (
 	"apiserverproxy/internal/proxy"
 )
 
-// New creates a Gin engine with all routes registered.
-func New(clusters *config.ClustersConfig, cacheManager *cache.Manager) *gin.Engine {
+// New creates a Gin engine with all routes registered and returns the handler for hot-reload.
+func New(clusters *config.ClustersConfig, cacheManager *cache.Manager) (*gin.Engine, *proxy.MultiClusterHandler) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -34,5 +34,5 @@ func New(clusters *config.ClustersConfig, cacheManager *cache.Manager) *gin.Engi
 	router.HEAD("/clusters/:cluster/*path", handler.Handle)
 	router.OPTIONS("/clusters/:cluster/*path", handler.Handle)
 
-	return router
+	return router, handler
 }

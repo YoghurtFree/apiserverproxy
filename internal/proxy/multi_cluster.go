@@ -45,6 +45,26 @@ func NewMultiClusterHandler(clusters *config.ClustersConfig, cacheManager *cache
 	}
 }
 
+// Reload updates the handler's cluster config and HTTP clients.
+func (h *MultiClusterHandler) Reload(clusters *config.ClustersConfig) {
+	newClients := make(map[string]*http.Client)
+	for _, cluster := range clusters.Clusters {
+		if existing, ok := h.clients[cluster.Name]; ok {
+			newClients[cluster.Name] = existing
+		} else {
+			newClients[cluster.Name] = &http.Client{
+				Timeout: 0,
+				Transport: &http.Transport{
+					TLSHandshakeTimeout: 10 * time.Second,
+					TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+				},
+			}
+		}
+	}
+	h.clusters = clusters
+	h.clients = newClients
+}
+
 // Handle is the Gin handler that proxies requests to the appropriate cluster.
 func (h *MultiClusterHandler) Handle(c *gin.Context) {
 	// Extract cluster name from path: /{cluster}/...
