@@ -9,8 +9,8 @@
   "clusters": [
     {
       "name": "minikube",
-      "server": "https://127.0.0.1:56447",
-      "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IkIyYjNJZmxOdEZLeG1zRVhQTEtDQzJpZTJjLWg5QU9JcDBUMkZWQ24tNmsifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjLmNsdXN0ZXIubG9jYWwiXSwiZXhwIjoxNzgxMjUxODk3LCJpYXQiOjE3ODEyNDQ2OTcsImlzcyI6Imh0dHBzOi8va3ViZXJuZXRlcy5kZWZhdWx0LnN2Yy5jbHVzdGVyLmxvY2FsIiwianRpIjoiNWExZmUzZDQtNzNmMS00NzNkLWEzMWEtNGE5YzQ0Zjc0ZWRmIiwia3ViZXJuZXRlcy5pbyI6eyJuYW1lc3BhY2UiOiJkZWZhdWx0Iiwic2VydmljZWFjY291bnQiOnsibmFtZSI6InRlc3Qtc2EiLCJ1aWQiOiIwMWYwYmE5ZS01MDcxLTRhMDItODdhOC1hNWY2OWFhODA5ZmQifX0sIm5iZiI6MTc4MTI0NDY5Nywic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50OmRlZmF1bHQ6dGVzdC1zYSJ9.dW_lRYqpi9VAcx5vUCU5vqyQn47wNEVvgYTOlPLRYlRulCAudT4zVq6VZoO0o5cp2dc45--VkYo4PUDE1joNyr5xPmF3CupcvIXBuG7gewWDf97R2wslVtjrUIvGGmZCAc3TiI9Ped0UpTIxIMZmQOoYcraZ7v9f_aK3wRbhQuOXna8iTSzMPmizKFGXvbkZ7XIKz7sdG7TfC84HB3x-3Y5vAQV1bGmNhCd2aCfsU_xOTA7PUPVrDiiX5WHceUoh8AmXGvGkuuE4UJSNW_9y_ZnL5x7Y8rD4aQ_5aiTZQMkoC7bE1JkUPrJ9Yi6gJDoxsVmNovxWdHmOJsoPhEuuzw"
+      "server": "https://127.0.0.1:6443",
+      "token": "<your-bearer-token>"
     }
   ]
 }
