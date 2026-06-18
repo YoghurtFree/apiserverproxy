@@ -133,9 +133,18 @@ func (h *MultiClusterHandler) Handle(c *gin.Context) {
 		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
 	}
 
-	// Set bearer token
-	if cluster.Token != "" {
-		proxyReq.Header.Set("Authorization", "Bearer "+cluster.Token)
+	// Set bearer token based on HTTP method
+	if c.Request.Method != "GET" {
+		// Non-GET requests: require client's own token
+		if proxyReq.Header.Get("Authorization") == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "non-GET requests require Authorization header"})
+			return
+		}
+	} else {
+		// GET requests: use config default token, ignore client token
+		if cluster.Token != "" {
+			proxyReq.Header.Set("Authorization", "Bearer "+cluster.Token)
+		}
 	}
 
 	// Check if this is a watch request
@@ -342,9 +351,18 @@ func (h *MultiClusterHandler) proxyRequest(c *gin.Context, clusterName, apiPath 
 		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
 	}
 
-	// Set bearer token
-	if cluster.Token != "" {
-		proxyReq.Header.Set("Authorization", "Bearer "+cluster.Token)
+	// Set bearer token based on HTTP method
+	if c.Request.Method != "GET" {
+		// Non-GET requests: require client's own token
+		if proxyReq.Header.Get("Authorization") == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "non-GET requests require Authorization header"})
+			return
+		}
+	} else {
+		// GET requests: use config default token, ignore client token
+		if cluster.Token != "" {
+			proxyReq.Header.Set("Authorization", "Bearer "+cluster.Token)
+		}
 	}
 
 	// Forward request
