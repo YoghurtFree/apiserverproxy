@@ -16,6 +16,7 @@ import (
 
 	"apiserverproxy/internal/cache"
 	"apiserverproxy/internal/config"
+	"apiserverproxy/internal/middleware"
 )
 
 // MultiClusterHandler proxies requests to multiple Kubernetes clusters.
@@ -130,7 +131,7 @@ func (h *MultiClusterHandler) Handle(c *gin.Context) {
 
 	// Set trace-id
 	if traceID, exists := c.Get("trace_id"); exists {
-		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
+		proxyReq.Header.Set(middleware.TraceIDHeader, traceID.(string))
 	}
 
 	// Set bearer token based on HTTP method
@@ -296,24 +297,6 @@ func extractNamespace(apiPath string) string {
 	return ""
 }
 
-// parseLabelSelector parses labelSelector string into map.
-// Example: "app=nginx,env=prod" -> {"app": "nginx", "env": "prod"}
-func parseLabelSelector(selector string) map[string]string {
-	if selector == "" {
-		return nil
-	}
-
-	labels := make(map[string]string)
-	pairs := strings.Split(selector, ",")
-	for _, pair := range pairs {
-		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
-		if len(parts) == 2 {
-			labels[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-	}
-	return labels
-}
-
 // proxyRequest proxies the request to the API server (fallback).
 func (h *MultiClusterHandler) proxyRequest(c *gin.Context, clusterName, apiPath string) {
 	cluster, err := h.clusters.GetCluster(clusterName)
@@ -348,7 +331,7 @@ func (h *MultiClusterHandler) proxyRequest(c *gin.Context, clusterName, apiPath 
 
 	// Set trace-id
 	if traceID, exists := c.Get("trace_id"); exists {
-		proxyReq.Header.Set("X-Trace-Id", traceID.(string))
+		proxyReq.Header.Set(middleware.TraceIDHeader, traceID.(string))
 	}
 
 	// Set bearer token based on HTTP method
