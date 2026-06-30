@@ -372,7 +372,7 @@ func (h *MultiClusterHandler) proxyRequest(c *gin.Context, clusterName, apiPath 
 
 // isWatchRequest checks if the request is a Kubernetes watch request.
 func isWatchRequest(req *http.Request) bool {
-	return req.URL.Query().Get("watch") == "true"
+	return strings.EqualFold(req.URL.Query().Get("watch"), "true")
 }
 
 // copyHeaders copies headers from src to dst.
