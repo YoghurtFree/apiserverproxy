@@ -20,6 +20,10 @@ architecture.drawio
 .DS_Store
 Thumbs.db
 
+# Docs & openspec
+docs/
+openspec/
+
 # Logs
 logs/
 
