@@ -107,6 +107,24 @@ func (h *MultiClusterHandler) Handle(c *gin.Context) {
 		return
 	}
 
+	// Cached resource types: ConfigMap, Secret, Node, Namespace, Deployment
+	cachedResources := []struct {
+		check   func(*http.Request, string) bool
+		handler func(*gin.Context, string, string)
+	}{
+		{h.isListConfigMapsRequest, h.handleListConfigMaps},
+		{h.isListSecretsRequest, h.handleListSecrets},
+		{h.isListNodesRequest, h.handleListNodes},
+		{h.isListNamespacesRequest, h.handleListNamespaces},
+		{h.isListDeploymentsRequest, h.handleListDeployments},
+	}
+	for _, r := range cachedResources {
+		if r.check(c.Request, apiPath) && !isWatchRequest(c.Request) && h.cache.HasCache(clusterName) {
+			r.handler(c, clusterName, apiPath)
+			return
+		}
+	}
+
 	// Build target URL
 	targetURL := fmt.Sprintf("%s%s", cluster.Server, apiPath)
 	if c.Request.URL.RawQuery != "" {
@@ -198,6 +216,46 @@ func (h *MultiClusterHandler) isListServicesRequest(req *http.Request, apiPath s
 	return servicePathRegex.MatchString(apiPath)
 }
 
+// isListConfigMapsRequest checks if the request is a list configmaps request.
+func (h *MultiClusterHandler) isListConfigMapsRequest(req *http.Request, apiPath string) bool {
+	if req.Method != "GET" {
+		return false
+	}
+	return regexp.MustCompile(`^/api/v1/(namespaces/[^/]+/)?configmaps$`).MatchString(apiPath)
+}
+
+// isListSecretsRequest checks if the request is a list secrets request.
+func (h *MultiClusterHandler) isListSecretsRequest(req *http.Request, apiPath string) bool {
+	if req.Method != "GET" {
+		return false
+	}
+	return regexp.MustCompile(`^/api/v1/(namespaces/[^/]+/)?secrets$`).MatchString(apiPath)
+}
+
+// isListNodesRequest checks if the request is a list nodes request.
+func (h *MultiClusterHandler) isListNodesRequest(req *http.Request, apiPath string) bool {
+	if req.Method != "GET" {
+		return false
+	}
+	return regexp.MustCompile(`^/api/v1/nodes$`).MatchString(apiPath)
+}
+
+// isListNamespacesRequest checks if the request is a list namespaces request.
+func (h *MultiClusterHandler) isListNamespacesRequest(req *http.Request, apiPath string) bool {
+	if req.Method != "GET" {
+		return false
+	}
+	return regexp.MustCompile(`^/api/v1/namespaces$`).MatchString(apiPath)
+}
+
+// isListDeploymentsRequest checks if the request is a list deployments request.
+func (h *MultiClusterHandler) isListDeploymentsRequest(req *http.Request, apiPath string) bool {
+	if req.Method != "GET" {
+		return false
+	}
+	return regexp.MustCompile(`^/apis/apps/v1/(namespaces/[^/]+/)?deployments$`).MatchString(apiPath)
+}
+
 // handleListPods handles list pods requests using cache.
 func (h *MultiClusterHandler) handleListPods(c *gin.Context, cluster, apiPath string) {
 	// Extract namespace from path if present
@@ -286,13 +344,127 @@ func (h *MultiClusterHandler) handleListServices(c *gin.Context, cluster, apiPat
 	c.Writer.Write(data)
 }
 
+// parseSelectors parses labelSelector and fieldSelector from query parameters.
+func parseSelectors(c *gin.Context) (labels.Selector, fields.Selector, error) {
+	ls, err := labels.Parse(c.Query("labelSelector"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid labelSelector: %w", err)
+	}
+
+	var fs fields.Selector
+	if fieldSelector := c.Query("fieldSelector"); fieldSelector != "" {
+		fs, err = fields.ParseSelector(fieldSelector)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid fieldSelector: %w", err)
+		}
+	}
+
+	return ls, fs, nil
+}
+
+// writeCacheResponse writes a cached resource list as JSON response.
+func writeCacheResponse(c *gin.Context, data interface{}) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("marshal response: %v", err)})
+		return
+	}
+
+	c.Header("Content-Type", "application/json")
+	c.Header("X-Cache", "HIT")
+	c.Status(http.StatusOK)
+	c.Writer.Write(jsonData)
+}
+
+// handleListConfigMaps handles list configmaps requests using cache.
+func (h *MultiClusterHandler) handleListConfigMaps(c *gin.Context, cluster, apiPath string) {
+	namespace := extractNamespace(apiPath)
+	ls, fs, err := parseSelectors(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	list, err := h.cache.ListConfigMaps(c.Request.Context(), cluster, namespace, ls, fs)
+	if err != nil {
+		h.proxyRequest(c, cluster, apiPath)
+		return
+	}
+	writeCacheResponse(c, list)
+}
+
+// handleListSecrets handles list secrets requests using cache.
+func (h *MultiClusterHandler) handleListSecrets(c *gin.Context, cluster, apiPath string) {
+	namespace := extractNamespace(apiPath)
+	ls, fs, err := parseSelectors(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	list, err := h.cache.ListSecrets(c.Request.Context(), cluster, namespace, ls, fs)
+	if err != nil {
+		h.proxyRequest(c, cluster, apiPath)
+		return
+	}
+	writeCacheResponse(c, list)
+}
+
+// handleListNodes handles list nodes requests using cache.
+func (h *MultiClusterHandler) handleListNodes(c *gin.Context, cluster, apiPath string) {
+	ls, fs, err := parseSelectors(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	list, err := h.cache.ListNodes(c.Request.Context(), cluster, ls, fs)
+	if err != nil {
+		h.proxyRequest(c, cluster, apiPath)
+		return
+	}
+	writeCacheResponse(c, list)
+}
+
+// handleListNamespaces handles list namespaces requests using cache.
+func (h *MultiClusterHandler) handleListNamespaces(c *gin.Context, cluster, apiPath string) {
+	ls, fs, err := parseSelectors(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	list, err := h.cache.ListNamespaces(c.Request.Context(), cluster, ls, fs)
+	if err != nil {
+		h.proxyRequest(c, cluster, apiPath)
+		return
+	}
+	writeCacheResponse(c, list)
+}
+
+// handleListDeployments handles list deployments requests using cache.
+func (h *MultiClusterHandler) handleListDeployments(c *gin.Context, cluster, apiPath string) {
+	namespace := extractNamespace(apiPath)
+	ls, fs, err := parseSelectors(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	list, err := h.cache.ListDeployments(c.Request.Context(), cluster, namespace, ls, fs)
+	if err != nil {
+		h.proxyRequest(c, cluster, apiPath)
+		return
+	}
+	writeCacheResponse(c, list)
+}
+
 // extractNamespace extracts namespace from API path.
 func extractNamespace(apiPath string) string {
-	// Match /api/v1/namespaces/{namespace}/pods or /api/v1/namespaces/{namespace}/services
-	re := regexp.MustCompile(`^/api/v1/namespaces/([^/]+)/(pods|services)$`)
+	re := regexp.MustCompile(`^/(api/v1|apis/apps/v1)/namespaces/([^/]+)/`)
 	matches := re.FindStringSubmatch(apiPath)
-	if len(matches) > 1 {
-		return matches[1]
+	if len(matches) > 2 {
+		return matches[2]
 	}
 	return ""
 }

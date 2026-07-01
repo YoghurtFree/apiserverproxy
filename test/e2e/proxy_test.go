@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -183,5 +184,163 @@ func TestWatchPods(t *testing.T) {
 			event.Type, pod.Namespace, pod.Name, pod.Status.Phase)
 	case <-timeout:
 		fmt.Println("No watch events in 5s (this is normal if cluster is idle)")
+	}
+}
+
+func TestListConfigMaps(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	configMaps, err := client.CoreV1().ConfigMaps("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list configmaps: %v", err)
+	}
+
+	fmt.Printf("Found %d configmaps\n", len(configMaps.Items))
+	for _, cm := range configMaps.Items {
+		fmt.Printf("  - %s/%s (keys=%d)\n", cm.Namespace, cm.Name, len(cm.Data))
+	}
+}
+
+func TestListConfigMapsInNamespace(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	configMaps, err := client.CoreV1().ConfigMaps("kube-system").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list configmaps in kube-system: %v", err)
+	}
+
+	fmt.Printf("Found %d configmaps in kube-system\n", len(configMaps.Items))
+	for _, cm := range configMaps.Items {
+		fmt.Printf("  - %s (keys=%d)\n", cm.Name, len(cm.Data))
+	}
+}
+
+func TestListSecrets(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	secrets, err := client.CoreV1().Secrets("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list secrets: %v", err)
+	}
+
+	fmt.Printf("Found %d secrets\n", len(secrets.Items))
+	for _, s := range secrets.Items {
+		fmt.Printf("  - %s/%s (type=%s, keys=%d)\n", s.Namespace, s.Name, s.Type, len(s.Data))
+	}
+}
+
+func TestListSecretsInNamespace(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	secrets, err := client.CoreV1().Secrets("default").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list secrets in default: %v", err)
+	}
+
+	fmt.Printf("Found %d secrets in default namespace\n", len(secrets.Items))
+	for _, s := range secrets.Items {
+		fmt.Printf("  - %s (type=%s)\n", s.Name, s.Type)
+	}
+}
+
+func TestListDeployments(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	deployments, err := client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list deployments: %v", err)
+	}
+
+	fmt.Printf("Found %d deployments\n", len(deployments.Items))
+	for _, d := range deployments.Items {
+		fmt.Printf("  - %s/%s (replicas=%d/%d)\n",
+			d.Namespace, d.Name, d.Status.ReadyReplicas, d.Status.Replicas)
+	}
+}
+
+func TestListDeploymentsInNamespace(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	deployments, err := client.AppsV1().Deployments("kube-system").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list deployments in kube-system: %v", err)
+	}
+
+	fmt.Printf("Found %d deployments in kube-system\n", len(deployments.Items))
+	for _, d := range deployments.Items {
+		fmt.Printf("  - %s (replicas=%d/%d)\n",
+			d.Name, d.Status.ReadyReplicas, d.Status.Replicas)
+	}
+}
+
+func TestCacheHitHeader(t *testing.T) {
+	token := os.Getenv("K8S_TOKEN")
+	if token == "" {
+		t.Fatal("K8S_TOKEN environment variable is required")
+	}
+
+	// Test that cached resources return X-Cache: HIT header
+	resources := []string{
+		"/api/v1/pods",
+		"/api/v1/services",
+		"/api/v1/configmaps",
+		"/api/v1/secrets",
+		"/api/v1/nodes",
+		"/api/v1/namespaces",
+		"/apis/apps/v1/deployments",
+	}
+
+	for _, path := range resources {
+		t.Run(path, func(t *testing.T) {
+			req, err := http.NewRequest("GET", proxyURL+path, nil)
+			if err != nil {
+				t.Fatalf("create request: %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request %s: %v", path, err)
+			}
+			resp.Body.Close()
+
+			cacheHeader := resp.Header.Get("X-Cache")
+			if cacheHeader != "HIT" {
+				t.Errorf("expected X-Cache: HIT for %s, got %q", path, cacheHeader)
+			} else {
+				fmt.Printf("  %s -> X-Cache: HIT\n", path)
+			}
+		})
+	}
+}
+
+func TestLabelSelector(t *testing.T) {
+	client := getClient(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Test labelSelector on pods
+	pods, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+		LabelSelector: "component=kube-apiserver",
+	})
+	if err != nil {
+		t.Fatalf("list pods with labelSelector: %v", err)
+	}
+
+	fmt.Printf("Found %d pods with component=kube-apiserver\n", len(pods.Items))
+	for _, pod := range pods.Items {
+		fmt.Printf("  - %s/%s\n", pod.Namespace, pod.Name)
 	}
 }

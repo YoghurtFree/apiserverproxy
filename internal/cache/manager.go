@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,6 +35,7 @@ type Manager struct {
 func NewManager() *Manager {
 	scheme := runtime.NewScheme()
 	corev1.AddToScheme(scheme)
+	appsv1.AddToScheme(scheme)
 
 	return &Manager{
 		caches: make(map[string]*ClusterCache),
@@ -59,6 +61,21 @@ func (m *Manager) Start(ctx context.Context, name string, config *rest.Config) e
 				UnsafeDisableDeepCopy: &trueVal,
 			},
 			&corev1.Service{}: {
+				UnsafeDisableDeepCopy: &trueVal,
+			},
+			&corev1.ConfigMap{}: {
+				UnsafeDisableDeepCopy: &trueVal,
+			},
+			&corev1.Secret{}: {
+				UnsafeDisableDeepCopy: &trueVal,
+			},
+			&corev1.Node{}: {
+				UnsafeDisableDeepCopy: &trueVal,
+			},
+			&corev1.Namespace{}: {
+				UnsafeDisableDeepCopy: &trueVal,
+			},
+			&appsv1.Deployment{}: {
 				UnsafeDisableDeepCopy: &trueVal,
 			},
 		},
@@ -110,6 +127,25 @@ func (m *Manager) Start(ctx context.Context, name string, config *rest.Config) e
 	}); err != nil {
 		cancel()
 		return fmt.Errorf("index service metadata.name for %s: %w", name, err)
+	}
+
+	// Register field indexers for new resource types
+	for _, res := range []struct {
+		obj  client.Object
+		name string
+	}{
+		{&corev1.ConfigMap{}, "configmap"},
+		{&corev1.Secret{}, "secret"},
+		{&corev1.Node{}, "node"},
+		{&corev1.Namespace{}, "namespace"},
+		{&appsv1.Deployment{}, "deployment"},
+	} {
+		if err := cache.IndexField(ctx, res.obj, "metadata.name", func(obj client.Object) []string {
+			return []string{obj.GetName()}
+		}); err != nil {
+			cancel()
+			return fmt.Errorf("index %s metadata.name for %s: %w", res.name, name, err)
+		}
 	}
 
 	// Start the cache in background
@@ -212,6 +248,145 @@ func (m *Manager) ListServices(ctx context.Context, cluster, namespace string, l
 	}
 
 	return services, nil
+}
+
+// ListConfigMaps lists configmaps from cache with optional filters.
+func (m *Manager) ListConfigMaps(ctx context.Context, cluster, namespace string, labelSelector labels.Selector, fieldSelector fields.Selector) (*corev1.ConfigMapList, error) {
+	m.mu.RLock()
+	cc, exists := m.caches[cluster]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no cache for cluster %q", cluster)
+	}
+
+	list := &corev1.ConfigMapList{}
+	opts := []client.ListOption{}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+	if labelSelector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
+	}
+	if fieldSelector != nil {
+		opts = append(opts, client.MatchingFieldsSelector{Selector: fieldSelector})
+	}
+
+	if err := cc.cache.List(ctx, list, opts...); err != nil {
+		return nil, fmt.Errorf("list configmaps from cache: %w", err)
+	}
+
+	return list, nil
+}
+
+// ListSecrets lists secrets from cache with optional filters.
+func (m *Manager) ListSecrets(ctx context.Context, cluster, namespace string, labelSelector labels.Selector, fieldSelector fields.Selector) (*corev1.SecretList, error) {
+	m.mu.RLock()
+	cc, exists := m.caches[cluster]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no cache for cluster %q", cluster)
+	}
+
+	list := &corev1.SecretList{}
+	opts := []client.ListOption{}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+	if labelSelector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
+	}
+	if fieldSelector != nil {
+		opts = append(opts, client.MatchingFieldsSelector{Selector: fieldSelector})
+	}
+
+	if err := cc.cache.List(ctx, list, opts...); err != nil {
+		return nil, fmt.Errorf("list secrets from cache: %w", err)
+	}
+
+	return list, nil
+}
+
+// ListNodes lists nodes from cache with optional filters.
+func (m *Manager) ListNodes(ctx context.Context, cluster string, labelSelector labels.Selector, fieldSelector fields.Selector) (*corev1.NodeList, error) {
+	m.mu.RLock()
+	cc, exists := m.caches[cluster]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no cache for cluster %q", cluster)
+	}
+
+	list := &corev1.NodeList{}
+	opts := []client.ListOption{}
+	if labelSelector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
+	}
+	if fieldSelector != nil {
+		opts = append(opts, client.MatchingFieldsSelector{Selector: fieldSelector})
+	}
+
+	if err := cc.cache.List(ctx, list, opts...); err != nil {
+		return nil, fmt.Errorf("list nodes from cache: %w", err)
+	}
+
+	return list, nil
+}
+
+// ListNamespaces lists namespaces from cache with optional filters.
+func (m *Manager) ListNamespaces(ctx context.Context, cluster string, labelSelector labels.Selector, fieldSelector fields.Selector) (*corev1.NamespaceList, error) {
+	m.mu.RLock()
+	cc, exists := m.caches[cluster]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no cache for cluster %q", cluster)
+	}
+
+	list := &corev1.NamespaceList{}
+	opts := []client.ListOption{}
+	if labelSelector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
+	}
+	if fieldSelector != nil {
+		opts = append(opts, client.MatchingFieldsSelector{Selector: fieldSelector})
+	}
+
+	if err := cc.cache.List(ctx, list, opts...); err != nil {
+		return nil, fmt.Errorf("list namespaces from cache: %w", err)
+	}
+
+	return list, nil
+}
+
+// ListDeployments lists deployments from cache with optional filters.
+func (m *Manager) ListDeployments(ctx context.Context, cluster, namespace string, labelSelector labels.Selector, fieldSelector fields.Selector) (*appsv1.DeploymentList, error) {
+	m.mu.RLock()
+	cc, exists := m.caches[cluster]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("no cache for cluster %q", cluster)
+	}
+
+	list := &appsv1.DeploymentList{}
+	opts := []client.ListOption{}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+	if labelSelector != nil {
+		opts = append(opts, client.MatchingLabelsSelector{Selector: labelSelector})
+	}
+	if fieldSelector != nil {
+		opts = append(opts, client.MatchingFieldsSelector{Selector: fieldSelector})
+	}
+
+	if err := cc.cache.List(ctx, list, opts...); err != nil {
+		return nil, fmt.Errorf("list deployments from cache: %w", err)
+	}
+
+	return list, nil
 }
 
 // HasCache returns true if cache exists for the cluster.
