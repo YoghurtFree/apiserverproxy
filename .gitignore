@@ -32,3 +32,5 @@ test/
 
 # Config with secrets
 # config.json  # uncomment if config contains real tokens
+
+.comet
