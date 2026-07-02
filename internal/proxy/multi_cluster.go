@@ -95,23 +95,13 @@ func (h *MultiClusterHandler) Handle(c *gin.Context) {
 		apiPath = "/"
 	}
 
-	// Check if this is a list pods request (not watch) and cache is available
-	if h.isListPodsRequest(c.Request, apiPath) && !isWatchRequest(c.Request) && h.cache.HasCache(clusterName) {
-		h.handleListPods(c, clusterName, apiPath)
-		return
-	}
-
-	// Check if this is a list services request (not watch) and cache is available
-	if h.isListServicesRequest(c.Request, apiPath) && !isWatchRequest(c.Request) && h.cache.HasCache(clusterName) {
-		h.handleListServices(c, clusterName, apiPath)
-		return
-	}
-
-	// Cached resource types: ConfigMap, Secret, Node, Namespace, Deployment
+	// Cached resource types
 	cachedResources := []struct {
 		check   func(*http.Request, string) bool
 		handler func(*gin.Context, string, string)
 	}{
+		{h.isListPodsRequest, h.handleListPods},
+		{h.isListServicesRequest, h.handleListServices},
 		{h.isListConfigMapsRequest, h.handleListConfigMaps},
 		{h.isListSecretsRequest, h.handleListSecrets},
 		{h.isListNodesRequest, h.handleListNodes},
@@ -258,90 +248,36 @@ func (h *MultiClusterHandler) isListDeploymentsRequest(req *http.Request, apiPat
 
 // handleListPods handles list pods requests using cache.
 func (h *MultiClusterHandler) handleListPods(c *gin.Context, cluster, apiPath string) {
-	// Extract namespace from path if present
 	namespace := extractNamespace(apiPath)
-
-	// Extract labelSelector from query parameters
-	labelSelector := c.Query("labelSelector")
-	ls, err := labels.Parse(labelSelector)
+	ls, fs, err := parseSelectors(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid labelSelector: %v", err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Extract fieldSelector from query parameters
-	fieldSelector := c.Query("fieldSelector")
-	var fs fields.Selector
-	if fieldSelector != "" {
-		fs, err = fields.ParseSelector(fieldSelector)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid fieldSelector: %v", err)})
-			return
-		}
-	}
-
-	pods, err := h.cache.ListPods(c.Request.Context(), cluster, namespace, ls, fs)
+	list, err := h.cache.ListPods(c.Request.Context(), cluster, namespace, ls, fs)
 	if err != nil {
-		// Fallback to API server if cache fails
 		h.proxyRequest(c, cluster, apiPath)
 		return
 	}
-
-	// Convert to JSON response
-	data, err := json.Marshal(pods)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("marshal pods: %v", err)})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.Header("X-Cache", "HIT")
-	c.Status(http.StatusOK)
-	c.Writer.Write(data)
+	writeCacheResponse(c, list)
 }
 
 // handleListServices handles list services requests using cache.
 func (h *MultiClusterHandler) handleListServices(c *gin.Context, cluster, apiPath string) {
-	// Extract namespace from path if present
 	namespace := extractNamespace(apiPath)
-
-	// Extract labelSelector from query parameters
-	labelSelector := c.Query("labelSelector")
-	ls, err := labels.Parse(labelSelector)
+	ls, fs, err := parseSelectors(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid labelSelector: %v", err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Extract fieldSelector from query parameters
-	fieldSelector := c.Query("fieldSelector")
-	var fs fields.Selector
-	if fieldSelector != "" {
-		fs, err = fields.ParseSelector(fieldSelector)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid fieldSelector: %v", err)})
-			return
-		}
-	}
-
-	services, err := h.cache.ListServices(c.Request.Context(), cluster, namespace, ls, fs)
+	list, err := h.cache.ListServices(c.Request.Context(), cluster, namespace, ls, fs)
 	if err != nil {
-		// Fallback to API server if cache fails
 		h.proxyRequest(c, cluster, apiPath)
 		return
 	}
-
-	// Convert to JSON response
-	data, err := json.Marshal(services)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("marshal services: %v", err)})
-		return
-	}
-
-	c.Header("Content-Type", "application/json")
-	c.Header("X-Cache", "HIT")
-	c.Status(http.StatusOK)
-	c.Writer.Write(data)
+	writeCacheResponse(c, list)
 }
 
 // parseSelectors parses labelSelector and fieldSelector from query parameters.
